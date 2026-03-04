@@ -44,9 +44,14 @@ export default function Flashcards() {
 
   const playAudio = (e: React.MouseEvent, text: string) => {
     e.stopPropagation();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    window.speechSynthesis.speak(utterance);
+    const audio = new Audio(`https://api.dictionaryapi.dev/media/pronunciations/en/${text.toLowerCase()}-us.mp3`);
+    
+    audio.play().catch(() => {
+      // Fallback to speech synthesis if audio file not found
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      window.speechSynthesis.speak(utterance);
+    });
   };
 
   const totalFavorites = Object.keys(favorites).length;
