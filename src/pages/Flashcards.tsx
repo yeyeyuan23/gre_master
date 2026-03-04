@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { RefreshCw, Check, X, Volume2, Play, Trash2 } from 'lucide-react';
@@ -10,16 +10,20 @@ export default function Flashcards() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewLimit, setReviewLimit] = useState<number | 'all'>(20);
 
-  // Initialize deck based on weights
-  useEffect(() => {
+  // Initialize deck only when starting review
+  const startReview = (limit: number | 'all') => {
     const words = Object.values(favorites);
     // Sort by weight descending (higher weight = needs more review)
     words.sort((a, b) => b.weight - a.weight);
-    setDeck(words);
+    
+    const limitedWords = limit === 'all' ? words : words.slice(0, limit);
+    setDeck(limitedWords);
     setCurrentIndex(0);
     setIsFlipped(false);
-  }, [favorites, isReviewing]);
+    setIsReviewing(true);
+  };
 
   const currentWord = deck[currentIndex];
 
@@ -45,7 +49,9 @@ export default function Flashcards() {
     window.speechSynthesis.speak(utterance);
   };
 
-  if (deck.length === 0) {
+  const totalFavorites = Object.keys(favorites).length;
+
+  if (totalFavorites === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center">
         <div className="w-24 h-24 bg-stone-100 rounded-full flex items-center justify-center mb-6">
@@ -65,15 +71,32 @@ export default function Flashcards() {
         <header className="mb-10 flex justify-between items-end">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-stone-900 mb-2">Saved Words</h1>
-            <p className="text-stone-500 text-lg">You have {deck.length} words in your collection.</p>
+            <p className="text-stone-500 text-lg">You have {totalFavorites} words in your collection.</p>
           </div>
-          <button
-            onClick={() => setIsReviewing(true)}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2 shadow-sm"
-          >
-            <Play className="w-5 h-5" />
-            Start Review
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200">
+              {[20, 50, 100, 'all'].map((val) => (
+                <button
+                  key={val}
+                  onClick={() => setReviewLimit(val as any)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    reviewLimit === val 
+                      ? 'bg-white text-stone-900 shadow-sm' 
+                      : 'text-stone-500 hover:text-stone-700'
+                  }`}
+                >
+                  {val === 'all' ? 'All' : val}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => startReview(reviewLimit)}
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <Play className="w-5 h-5" />
+              Start Review
+            </button>
+          </div>
         </header>
 
         <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden">
@@ -84,7 +107,7 @@ export default function Flashcards() {
             <div className="col-span-2 text-right pr-4">Actions</div>
           </div>
           <div className="divide-y divide-stone-100">
-            {deck.map((word) => (
+            {Object.values(favorites).sort((a, b) => b.weight - a.weight).map((word) => (
               <div key={word.word} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-stone-50 transition-colors">
                 <div className="col-span-3 pl-4">
                   <span className="font-bold text-stone-900 text-lg">{word.word}</span>
@@ -134,11 +157,7 @@ export default function Flashcards() {
             Back to List
           </button>
           <button
-            onClick={() => {
-              const words = Object.values(favorites).sort((a, b) => b.weight - a.weight);
-              setDeck(words);
-              setCurrentIndex(0);
-            }}
+            onClick={() => startReview(reviewLimit)}
             className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition-colors"
           >
             Review Again
