@@ -1,16 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Star, Volume2, Loader2, Check } from 'lucide-react';
 import { lookupWord, WordData } from '../services/geminiService';
 import { useStore } from '../store/useStore';
 
 export default function VocabularySearch() {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<WordData | null>(null);
-  const [error, setError] = useState('');
+  const { favorites, addFavorite, removeFavorite, lastSearch, setLastSearch } = useStore();
   
-  const { favorites, addFavorite, removeFavorite } = useStore();
+  const [query, setQuery] = useState(lastSearch?.query || '');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<WordData | null>(lastSearch?.result || null);
+  const [error, setError] = useState('');
 
+  useEffect(() => {
+    setLastSearch(query, result);
+  }, [query, result, setLastSearch]);
+  
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
@@ -80,7 +84,49 @@ export default function VocabularySearch() {
         </div>
       )}
 
-      {result && (
+      {loading && (
+        <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden animate-pulse">
+          <div className="p-8 border-b border-stone-100 flex justify-between items-start">
+            <div>
+              <div className="h-10 bg-stone-200 rounded-lg w-48 mb-4"></div>
+              <div className="h-6 bg-stone-200 rounded-lg w-32"></div>
+            </div>
+            <div className="h-10 bg-stone-200 rounded-xl w-32"></div>
+          </div>
+
+          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-8">
+              <section>
+                <div className="h-4 bg-stone-200 rounded w-24 mb-4"></div>
+                <div className="h-6 bg-stone-200 rounded w-full"></div>
+              </section>
+
+              <section>
+                <div className="h-4 bg-stone-200 rounded w-32 mb-4"></div>
+                <div className="h-6 bg-stone-200 rounded w-full mb-2"></div>
+                <div className="h-6 bg-stone-200 rounded w-5/6"></div>
+              </section>
+
+              <section>
+                <div className="h-4 bg-stone-200 rounded w-24 mb-4"></div>
+                <div className="space-y-3">
+                  <div className="h-8 bg-stone-200 rounded-lg w-full"></div>
+                  <div className="h-8 bg-stone-200 rounded-lg w-11/12"></div>
+                  <div className="h-8 bg-stone-200 rounded-lg w-4/5"></div>
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-6">
+              <div className="h-4 bg-stone-200 rounded w-32 mb-4"></div>
+              <div className="h-28 bg-stone-200 rounded-2xl w-full"></div>
+              <div className="h-28 bg-stone-200 rounded-2xl w-full"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!loading && result && (
         <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="p-8 border-b border-stone-100 flex justify-between items-start">
             <div>

@@ -26,7 +26,7 @@ export async function lookupWord(word: string): Promise<WordData> {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Provide detailed information for the GRE vocabulary word: "${word}". Ensure the usage is accurate and reflects native speaker habits.`,
+    contents: `Provide detailed information for the GRE vocabulary word: "${word}". Ensure the usage is accurate and reflects native speaker habits. To ensure a fast response, strictly limit the output to exactly 3 collocations and 2 example sentences.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
