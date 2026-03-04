@@ -1,0 +1,5 @@
+{
+  "name": "GRE Master",
+  "description": "A GRE learning app featuring vocabulary lookup, flashcard review, and AI-powered essay grading.",
+  "requestFramePermissions": []
+}
