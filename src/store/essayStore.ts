@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { EssayFeedback } from '../services/geminiService';
+import { EssayFeedback } from '../types';
 
 export interface SavedEssay {
   id: string;

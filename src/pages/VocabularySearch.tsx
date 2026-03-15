@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Star, Volume2, Loader2, Check } from 'lucide-react';
+import { Search, Star, Volume2, Loader2, Check, Brain, List, Plus, Trash2, Save } from 'lucide-react';
 import { lookupWord, WordData } from '../services/geminiService';
 import { useStore } from '../store/useStore';
 
@@ -8,78 +8,116 @@ export default function VocabularySearch() {
   
   const [query, setQuery] = useState(lastSearch?.query || '');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<WordData | null>(lastSearch?.result || null);
+  const [results, setResults] = useState<WordData[]>(lastSearch?.results || []);
   const [error, setError] = useState('');
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
-    setLastSearch(query, result);
-  }, [query, result, setLastSearch]);
+    setLastSearch(query, results);
+  }, [query, results, setLastSearch]);
   
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     
+    // Split by spaces, commas, or newlines
+    const words = query.split(/[\s,，\n]+/).map(w => w.trim()).filter(w => w.length > 0);
+
+    if (words.length === 0) return;
+
     setLoading(true);
     setError('');
-    setResult(null);
+    setResults([]);
+    setProgress({ current: 0, total: words.length });
+    
+    const newResults: WordData[] = [];
     
     try {
-      const data = await lookupWord(query.trim());
-      setResult(data);
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        setProgress(prev => ({ ...prev, current: i + 1 }));
+        try {
+          const data = await lookupWord(word);
+          newResults.push(data);
+          setResults([...newResults]);
+        } catch (err) {
+          console.error(`Failed to fetch word: ${word}`, err);
+        }
+      }
+      
+      if (newResults.length === 0) {
+        setError('Failed to fetch word details. Please try again.');
+      }
     } catch (err) {
-      setError('Failed to fetch word details. Please try again.');
+      setError('An unexpected error occurred. Please try again.');
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const isFavorite = result ? !!favorites[result.word] : false;
-
-  const toggleFavorite = () => {
-    if (!result) return;
-    if (isFavorite) {
-      removeFavorite(result.word);
+  const toggleFavorite = (wordData: WordData) => {
+    if (favorites[wordData.word]) {
+      removeFavorite(wordData.word);
     } else {
-      addFavorite(result);
+      addFavorite(wordData);
     }
   };
 
-  const playAudio = (text: string) => {
-    const audio = new Audio(`https://api.dictionaryapi.dev/media/pronunciations/en/${text.toLowerCase()}-us.mp3`);
-    
-    audio.play().catch(() => {
-      // Fallback to speech synthesis if audio file not found
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      window.speechSynthesis.speak(utterance);
+  const saveAll = () => {
+    results.forEach(result => {
+      if (!favorites[result.word]) {
+        addFavorite(result);
+      }
     });
   };
 
+  const playAudio = async (text: string) => {
+    try {
+      const audio = new Audio(`https://api.dictionaryapi.dev/media/pronunciations/en/${text.toLowerCase()}-us.mp3`);
+      await audio.play();
+    } catch (err) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto p-8">
-      <header className="mb-10">
-        <h1 className="text-4xl font-bold tracking-tight text-stone-900 mb-2">Vocabulary Search</h1>
+    <div className="max-w-4xl mx-auto p-4 lg:p-8">
+      <header className="mb-6 lg:mb-8">
+        <h1 className="text-3xl font-bold tracking-tight text-stone-900 mb-2">Vocabulary Search</h1>
         <p className="text-stone-500 text-lg">Master GRE vocabulary with deep context and native usage.</p>
       </header>
 
-      <form onSubmit={handleSearch} className="relative mb-12">
-        <div className="relative flex items-center">
-          <Search className="absolute left-4 w-6 h-6 text-stone-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search for a word (e.g., ephemeral)..."
-            className="w-full pl-14 pr-32 py-4 bg-white border border-stone-200 rounded-2xl shadow-sm text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-          />
-          <button
-            type="submit"
-            disabled={loading || !query.trim()}
-            className="absolute right-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Search'}
-          </button>
+      <form onSubmit={handleSearch} className="relative mb-8">
+        <div className="flex flex-col gap-3">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search for words (e.g. 'apple banana cherry')..."
+              className="w-full pl-12 pr-4 py-3 bg-white border border-stone-200 rounded-xl shadow-sm text-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all"
+            />
+          </div>
+          <div className="flex justify-between items-center">
+            {loading && progress.total > 1 && (
+              <div className="text-sm font-medium text-stone-500">
+                Processing: {progress.current} / {progress.total}
+              </div>
+            )}
+            <div className="flex-1"></div>
+            <button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Search'}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -89,8 +127,8 @@ export default function VocabularySearch() {
         </div>
       )}
 
-      {loading && (
-        <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden animate-pulse">
+      {loading && results.length === 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden animate-pulse">
           <div className="p-8 border-b border-stone-100 flex justify-between items-start">
             <div>
               <div className="h-10 bg-stone-200 rounded-lg w-48 mb-4"></div>
@@ -98,114 +136,143 @@ export default function VocabularySearch() {
             </div>
             <div className="h-10 bg-stone-200 rounded-xl w-32"></div>
           </div>
-
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-8">
-              <section>
-                <div className="h-4 bg-stone-200 rounded w-24 mb-4"></div>
-                <div className="h-6 bg-stone-200 rounded w-full"></div>
-              </section>
-
-              <section>
-                <div className="h-4 bg-stone-200 rounded w-32 mb-4"></div>
-                <div className="h-6 bg-stone-200 rounded w-full mb-2"></div>
-                <div className="h-6 bg-stone-200 rounded w-5/6"></div>
-              </section>
-
-              <section>
-                <div className="h-4 bg-stone-200 rounded w-24 mb-4"></div>
-                <div className="space-y-3">
-                  <div className="h-8 bg-stone-200 rounded-lg w-full"></div>
-                  <div className="h-8 bg-stone-200 rounded-lg w-11/12"></div>
-                  <div className="h-8 bg-stone-200 rounded-lg w-4/5"></div>
-                </div>
-              </section>
-            </div>
-
-            <div className="space-y-6">
-              <div className="h-4 bg-stone-200 rounded w-32 mb-4"></div>
-              <div className="h-28 bg-stone-200 rounded-2xl w-full"></div>
-              <div className="h-28 bg-stone-200 rounded-2xl w-full"></div>
-            </div>
-          </div>
         </div>
       )}
 
-      {!loading && result && (
-        <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="p-8 border-b border-stone-100 flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-4 mb-2">
-                <h2 className="text-4xl font-bold text-stone-900">{result.word}</h2>
-                <button
-                  onClick={() => playAudio(result.word)}
-                  className="p-2 text-stone-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                  title="Listen to pronunciation"
-                >
-                  <Volume2 className="w-6 h-6" />
-                </button>
-              </div>
-              <p className="text-xl font-mono text-stone-500">{result.pronunciation}</p>
+      {results.length > 0 && (
+        <div className="space-y-8">
+          {results.length > 1 && !loading && (
+            <div className="flex justify-end">
+              <button
+                onClick={saveAll}
+                className="flex items-center gap-2 px-6 py-3 bg-amber-400 hover:bg-amber-300 text-stone-900 font-bold rounded-xl transition-all shadow-sm"
+              >
+                <Save className="w-5 h-5" />
+                Save All {results.length} Words
+              </button>
             </div>
+          )}
+          
+          {results.map((result, index) => (
+            <WordCard 
+              key={`${result.word}-${index}`}
+              result={result}
+              isFavorite={!!favorites[result.word]}
+              onToggleFavorite={() => toggleFavorite(result)}
+              onPlayAudio={() => playAudio(result.word)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WordCard({ result, isFavorite, onToggleFavorite, onPlayAudio }: { 
+  result: WordData, 
+  isFavorite: boolean, 
+  onToggleFavorite: () => void,
+  onPlayAudio: () => void 
+}) {
+  return (
+    <div className="bg-white rounded-2xl shadow-xl shadow-stone-200/50 border border-stone-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header Section */}
+      <div className="px-8 py-6 bg-white border-b border-stone-100 flex flex-col sm:flex-row justify-between items-start gap-6 relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="flex items-center gap-4 mb-1">
+            <h2 className="text-4xl font-bold tracking-tight text-stone-900">{result.word}</h2>
             <button
-              onClick={toggleFavorite}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
-                isFavorite 
-                  ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' 
-                  : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
-              }`}
+              onClick={onPlayAudio}
+              className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-full transition-colors"
+              title="Listen to pronunciation"
             >
-              {isFavorite ? (
-                <>
-                  <Check className="w-5 h-5" />
-                  Saved
-                </>
-              ) : (
-                <>
-                  <Star className="w-5 h-5" />
-                  Save Word
-                </>
-              )}
+              <Volume2 className="w-5 h-5" />
             </button>
           </div>
+          <p className="text-xl font-mono text-indigo-600 font-medium">{result.pronunciation}</p>
+        </div>
+        <button
+          onClick={onToggleFavorite}
+          className={`relative z-10 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-bold transition-all ${
+            isFavorite 
+              ? 'bg-amber-400 text-stone-900 hover:bg-amber-300' 
+              : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
+          }`}
+        >
+          {isFavorite ? (
+            <>
+              <Check className="w-4 h-4" />
+              Saved
+            </>
+          ) : (
+            <>
+              <Star className="w-4 h-4" />
+              Save
+            </>
+          )}
+        </button>
+      </div>
 
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-8">
-              <section>
-                <h3 className="text-sm font-bold tracking-wider text-stone-400 uppercase mb-3">Chinese Meaning</h3>
-                <p className="text-lg text-stone-800">{result.chineseMeaning}</p>
-              </section>
+      <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left Column: Meanings & Mnemonics */}
+        <div className="space-y-6">
+          <section className="bg-stone-50 p-5 rounded-xl border border-stone-100">
+            <h3 className="text-xs font-bold tracking-wider text-stone-500 uppercase mb-2">Chinese Meaning</h3>
+            <p className="text-lg text-stone-900 font-medium leading-relaxed">{result.chineseMeaning}</p>
+          </section>
 
-              <section>
-                <h3 className="text-sm font-bold tracking-wider text-stone-400 uppercase mb-3">English Meaning</h3>
-                <p className="text-lg text-stone-800 leading-relaxed">{result.englishMeaning}</p>
-              </section>
+          <section className="bg-stone-50 p-5 rounded-xl border border-stone-100">
+            <h3 className="text-xs font-bold tracking-wider text-stone-500 uppercase mb-2">English Definition</h3>
+            <p className="text-lg text-stone-700 leading-relaxed font-serif">
+              "{result.englishMeaning}"
+            </p>
+          </section>
 
-              <section>
-                <h3 className="text-sm font-bold tracking-wider text-stone-400 uppercase mb-3">Collocations</h3>
-                <ul className="space-y-2">
-                  {(result.collocations || []).map((col, idx) => (
-                    <li key={idx} className="flex items-center gap-2 text-stone-700 bg-stone-50 px-3 py-2 rounded-lg">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                      {col}
-                    </li>
-                  ))}
-                </ul>
-              </section>
+          <section className="bg-amber-50/50 p-5 rounded-xl border border-amber-100/50 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+              <Brain className="w-16 h-16 text-amber-900" />
             </div>
+            <div className="flex items-center gap-2 mb-2">
+              <Brain className="w-4 h-4 text-amber-700" />
+              <h3 className="text-xs font-bold tracking-wider text-amber-900/70 uppercase">Mnemonics</h3>
+            </div>
+            <p className="text-base text-stone-800 leading-relaxed relative z-10">
+              {result.memoryAid}
+            </p>
+          </section>
+        </div>
 
-            <div className="space-y-6">
-              <h3 className="text-sm font-bold tracking-wider text-stone-400 uppercase mb-3">Example Sentences</h3>
+        {/* Right Column: Collocations & Usage */}
+        <div className="space-y-6">
+          <section className="bg-stone-50 p-5 rounded-xl border border-stone-100">
+            <h3 className="text-xs font-bold tracking-wider text-stone-500 uppercase mb-3">Collocations</h3>
+            <ul className="space-y-2">
+              {(result.collocations || []).map((col, idx) => (
+                <li key={idx} className="flex items-center gap-2 text-stone-700 font-medium text-base">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                  {col}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-bold tracking-wider text-stone-500 uppercase mb-3">Contextual Usage</h3>
+            <div className="space-y-3">
               {(result.sentences || []).map((sent, idx) => (
-                <div key={idx} className="p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
-                  <p className="text-stone-900 font-medium leading-relaxed mb-2">{sent.english}</p>
-                  <p className="text-stone-500 text-sm">{sent.chinese}</p>
+                <div key={idx} className="p-4 bg-white border border-stone-100 rounded-xl">
+                  <p className="text-stone-900 text-base font-medium leading-relaxed mb-1">
+                    {sent.english}
+                  </p>
+                  <p className="text-stone-500 text-sm pl-0">
+                    {sent.chinese}
+                  </p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         </div>
-      )}
+      </div>
     </div>
   );
 }

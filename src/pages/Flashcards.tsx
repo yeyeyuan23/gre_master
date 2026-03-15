@@ -1,16 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { useStore } from '../store/useStore';
-import { RefreshCw, Check, X, Volume2, Play, Trash2 } from 'lucide-react';
+import { RefreshCw, Check, X, Volume2, Play, Trash2, Brain } from 'lucide-react';
 import { SavedWord } from '../store/useStore';
 
 export default function Flashcards() {
-  const { favorites, updateWeight, removeFavorite } = useStore();
-  const [deck, setDeck] = useState<SavedWord[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [isReviewing, setIsReviewing] = useState(false);
-  const [reviewLimit, setReviewLimit] = useState<number | 'all'>(20);
+  const { favorites, updateWeight, removeFavorite, flashcardState, setFlashcardState } = useStore();
+  const { deck, currentIndex, isFlipped, isReviewing, reviewLimit } = flashcardState;
 
   // Initialize deck only when starting review
   const startReview = (limit: number | 'all') => {
@@ -19,10 +15,13 @@ export default function Flashcards() {
     words.sort((a, b) => b.weight - a.weight);
     
     const limitedWords = limit === 'all' ? words : words.slice(0, limit);
-    setDeck(limitedWords);
-    setCurrentIndex(0);
-    setIsFlipped(false);
-    setIsReviewing(true);
+    setFlashcardState({
+      deck: limitedWords,
+      currentIndex: 0,
+      isFlipped: false,
+      isReviewing: true,
+      reviewLimit: limit
+    });
   };
 
   const currentWord = deck[currentIndex];
@@ -38,20 +37,26 @@ export default function Flashcards() {
       updateWeight(currentWord.word, -1);
     }
 
-    setIsFlipped(false);
-    setCurrentIndex((prev) => prev + 1);
+    setFlashcardState({
+      isFlipped: false,
+      currentIndex: currentIndex + 1
+    });
   };
 
-  const playAudio = (e: React.MouseEvent, text: string) => {
+  const playAudio = async (e: React.MouseEvent, text: string) => {
     e.stopPropagation();
-    const audio = new Audio(`https://api.dictionaryapi.dev/media/pronunciations/en/${text.toLowerCase()}-us.mp3`);
     
-    audio.play().catch(() => {
-      // Fallback to speech synthesis if audio file not found
+    try {
+      // Try dictionary API first
+      const audio = new Audio(`https://api.dictionaryapi.dev/media/pronunciations/en/${text.toLowerCase()}-us.mp3`);
+      await audio.play();
+    } catch (err) {
+      // Fallback to Web Speech API
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'en-US';
+      utterance.rate = 0.9; // Slightly slower for clearer pronunciation
       window.speechSynthesis.speak(utterance);
-    });
+    }
   };
 
   const totalFavorites = Object.keys(favorites).length;
@@ -72,19 +77,19 @@ export default function Flashcards() {
 
   if (!isReviewing) {
     return (
-      <div className="max-w-4xl mx-auto p-8">
-        <header className="mb-10 flex justify-between items-end">
+      <div className="max-w-4xl mx-auto p-4 lg:p-8">
+        <header className="mb-6 lg:mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight text-stone-900 mb-2">Saved Words</h1>
-            <p className="text-stone-500 text-lg">You have {totalFavorites} words in your collection.</p>
+            <h1 className="text-2xl lg:text-4xl font-bold tracking-tight text-stone-900 mb-1 lg:mb-2">Saved Words</h1>
+            <p className="text-stone-500 text-sm lg:text-lg">You have {totalFavorites} words in your collection.</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200">
               {[20, 50, 100, 'all'].map((val) => (
                 <button
                   key={val}
-                  onClick={() => setReviewLimit(val as any)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  onClick={() => setFlashcardState({ reviewLimit: val as any })}
+                  className={`flex-1 sm:flex-none px-3 lg:px-4 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-all ${
                     reviewLimit === val 
                       ? 'bg-white text-stone-900 shadow-sm' 
                       : 'text-stone-500 hover:text-stone-700'
@@ -96,7 +101,7 @@ export default function Flashcards() {
             </div>
             <button
               onClick={() => startReview(reviewLimit)}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2 shadow-sm"
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm"
             >
               <Play className="w-5 h-5" />
               Start Review
@@ -104,23 +109,38 @@ export default function Flashcards() {
           </div>
         </header>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden">
-          <div className="grid grid-cols-12 gap-4 p-4 border-b border-stone-100 bg-stone-50 text-xs font-bold tracking-wider text-stone-400 uppercase">
-            <div className="col-span-3 pl-4">Word</div>
-            <div className="col-span-4">Meaning</div>
-            <div className="col-span-3">Weight</div>
-            <div className="col-span-2 text-right pr-4">Actions</div>
+        <div className="bg-white rounded-2xl lg:rounded-3xl shadow-sm border border-stone-200 overflow-hidden">
+          <div className="hidden lg:grid grid-cols-12 gap-4 p-4 border-b border-stone-100 bg-stone-50 text-xs font-bold tracking-wider text-stone-400 uppercase">
+            <div className="col-span-4 pl-4">Word</div>
+            <div className="col-span-5">Meaning</div>
+            <div className="col-span-2">Weight</div>
+            <div className="col-span-1 text-right pr-4">Actions</div>
           </div>
           <div className="divide-y divide-stone-100">
             {Object.values(favorites).sort((a, b) => b.weight - a.weight).map((word) => (
-              <div key={word.word} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-stone-50 transition-colors">
-                <div className="col-span-3 pl-4">
-                  <span className="font-bold text-stone-900 text-lg">{word.word}</span>
+              <div key={word.word} className="flex flex-col lg:grid lg:grid-cols-12 gap-2 lg:gap-4 p-4 items-start lg:items-center hover:bg-stone-50 transition-colors">
+                <div className="lg:col-span-4 w-full flex justify-between items-center overflow-hidden">
+                  <span className="font-bold text-stone-900 text-lg truncate pr-2">{word.word}</span>
+                  <div className="lg:hidden flex items-center gap-3 shrink-0">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      word.weight > 0 ? 'bg-red-100 text-red-800' : 
+                      word.weight < 0 ? 'bg-green-100 text-green-800' : 
+                      'bg-stone-100 text-stone-800'
+                    }`}>
+                      W: {word.weight}
+                    </span>
+                    <button
+                      onClick={() => removeFavorite(word.word)}
+                      className="p-1.5 text-stone-400 hover:text-red-600"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="col-span-4 text-stone-600 truncate pr-4">
+                <div className="lg:col-span-5 text-stone-600 text-sm lg:text-base pr-4 line-clamp-2 lg:line-clamp-none">
                   {word.chineseMeaning}
                 </div>
-                <div className="col-span-3">
+                <div className="hidden lg:block lg:col-span-2">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     word.weight > 0 ? 'bg-red-100 text-red-800' : 
                     word.weight < 0 ? 'bg-green-100 text-green-800' : 
@@ -129,11 +149,10 @@ export default function Flashcards() {
                     {word.weight > 0 ? '+' : ''}{word.weight}
                   </span>
                 </div>
-                <div className="col-span-2 text-right pr-4">
+                <div className="hidden lg:block lg:col-span-1 text-right pr-4">
                   <button
                     onClick={() => removeFavorite(word.word)}
                     className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Remove from saved"
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
@@ -156,7 +175,7 @@ export default function Flashcards() {
         <p className="text-stone-500 mb-8">You've gone through all your saved words.</p>
         <div className="flex gap-4">
           <button
-            onClick={() => setIsReviewing(false)}
+            onClick={() => setFlashcardState({ isReviewing: false })}
             className="px-8 py-3 bg-white border border-stone-200 text-stone-700 font-medium rounded-xl hover:bg-stone-50 transition-colors"
           >
             Back to List
@@ -173,54 +192,56 @@ export default function Flashcards() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8 bg-stone-50 overflow-hidden relative">
-      <div className="absolute top-8 left-8 right-8 flex justify-between items-center text-stone-500 font-medium">
+    <div className="flex flex-col h-full p-4 lg:p-8 bg-stone-50 overflow-hidden">
+      <div className="w-full flex justify-between items-center text-stone-500 font-medium z-10 shrink-0 mb-4 lg:mb-8">
         <button
-          onClick={() => setIsReviewing(false)}
-          className="hover:text-stone-900 transition-colors flex items-center gap-2"
+          onClick={() => setFlashcardState({ isReviewing: false })}
+          className="hover:text-stone-900 transition-colors flex items-center gap-2 text-sm lg:text-base"
         >
-          <X className="w-5 h-5" /> Exit Review
+          <X className="w-4 h-4 lg:w-5 lg:h-5" /> Exit
         </button>
-        <div className="flex items-center gap-4">
-          <span>Reviewing {currentIndex + 1} of {deck.length}</span>
-          <span className="bg-stone-200 px-3 py-1 rounded-full text-sm">
-            Weight: {currentWord.weight}
+        <div className="flex items-center gap-2 lg:gap-4 text-xs lg:text-sm">
+          <span>{currentIndex + 1} / {deck.length}</span>
+          <span className="bg-stone-200 px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-stone-700">
+            W: {currentWord.weight}
           </span>
         </div>
       </div>
 
-      <div className="relative w-full max-w-md aspect-[3/4] perspective-1000">
-        <AnimatePresence mode="popLayout">
-          <Flashcard
-            key={currentWord.word}
-            word={currentWord}
-            isFlipped={isFlipped}
-            setIsFlipped={setIsFlipped}
-            onSwipe={handleSwipe}
-            playAudio={playAudio}
-          />
-        </AnimatePresence>
-      </div>
-
-      <div className="mt-12 flex items-center gap-12">
-        <div className="flex flex-col items-center gap-2">
-          <button
-            onClick={() => handleSwipe('left')}
-            className="w-16 h-16 rounded-full bg-white border-2 border-red-100 text-red-500 flex items-center justify-center hover:bg-red-50 hover:scale-105 transition-all shadow-sm"
-          >
-            <X className="w-8 h-8" />
-          </button>
-          <span className="text-sm font-medium text-stone-400 uppercase tracking-wider">Didn't Know</span>
+      <div className="flex-1 flex flex-col items-center justify-center w-full min-h-min">
+        <div className="relative w-full max-w-[320px] lg:max-w-[400px] h-[380px] lg:h-[440px] perspective-1000 z-0">
+          <AnimatePresence mode="popLayout">
+            <Flashcard
+              key={currentWord.word}
+              word={currentWord}
+              isFlipped={isFlipped}
+              setIsFlipped={(val: boolean) => setFlashcardState({ isFlipped: val })}
+              onSwipe={handleSwipe}
+              playAudio={playAudio}
+            />
+          </AnimatePresence>
         </div>
-        
-        <div className="flex flex-col items-center gap-2">
-          <button
-            onClick={() => handleSwipe('right')}
-            className="w-16 h-16 rounded-full bg-white border-2 border-green-100 text-green-500 flex items-center justify-center hover:bg-green-50 hover:scale-105 transition-all shadow-sm"
-          >
-            <Check className="w-8 h-8" />
-          </button>
-          <span className="text-sm font-medium text-stone-400 uppercase tracking-wider">Knew It</span>
+
+        <div className="mt-6 lg:mt-8 flex items-center gap-8 lg:gap-12 z-10 shrink-0">
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={() => handleSwipe('left')}
+              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full bg-white border-2 border-red-100 text-red-500 flex items-center justify-center hover:bg-red-50 hover:scale-105 transition-all shadow-sm"
+            >
+              <X className="w-6 h-6 lg:w-8 lg:h-8" />
+            </button>
+            <span className="text-[10px] lg:text-sm font-medium text-stone-400 uppercase tracking-wider">Forgot</span>
+          </div>
+          
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={() => handleSwipe('right')}
+              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full bg-white border-2 border-green-100 text-green-500 flex items-center justify-center hover:bg-green-50 hover:scale-105 transition-all shadow-sm"
+            >
+              <Check className="w-6 h-6 lg:w-8 lg:h-8" />
+            </button>
+            <span className="text-[10px] lg:text-sm font-medium text-stone-400 uppercase tracking-wider">Know</span>
+          </div>
         </div>
       </div>
     </div>
@@ -233,9 +254,9 @@ function Flashcard({ word, isFlipped, setIsFlipped, onSwipe, playAudio }: any) {
   const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0, 1, 1, 1, 0]);
 
   const handleDragEnd = (e: any, info: any) => {
-    if (info.offset.x > 100) {
+    if (info.offset.x > 80) {
       onSwipe('right');
-    } else if (info.offset.x < -100) {
+    } else if (info.offset.x < -80) {
       onSwipe('left');
     }
   };
@@ -258,49 +279,56 @@ function Flashcard({ word, isFlipped, setIsFlipped, onSwipe, playAudio }: any) {
         onClick={() => setIsFlipped(!isFlipped)}
       >
         {/* Front */}
-        <div className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-3xl shadow-xl border border-stone-100 flex flex-col items-center justify-center p-8 text-center">
-          <h2 className="text-5xl font-bold text-stone-900 mb-6">{word.word}</h2>
-          <p className="text-stone-400 text-sm uppercase tracking-widest">Tap to flip</p>
+        <div className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-2xl lg:rounded-3xl shadow-xl border border-stone-100 flex flex-col items-center justify-center p-6 lg:p-8 text-center">
+          <h2 className="text-3xl lg:text-5xl font-bold text-stone-900 mb-4 lg:mb-6">{word.word}</h2>
+          <p className="text-stone-400 text-[10px] lg:text-sm uppercase tracking-widest">Tap to flip</p>
         </div>
 
         {/* Back */}
         <div 
-          className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-3xl shadow-xl border border-stone-100 p-8 overflow-y-auto"
+          className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-2xl lg:rounded-3xl shadow-xl border border-stone-100"
           style={{ transform: 'rotateY(180deg)' }}
         >
-          <div className="flex justify-between items-start mb-6 pb-6 border-b border-stone-100">
-            <div>
-              <h2 className="text-3xl font-bold text-stone-900 mb-2">{word.word}</h2>
-              <p className="text-lg font-mono text-stone-500">{word.pronunciation}</p>
-            </div>
-            <button
-              onClick={(e) => playAudio(e, word.word)}
-              className="p-3 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors"
-            >
-              <Volume2 className="w-6 h-6" />
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xs font-bold tracking-wider text-stone-400 uppercase mb-2">Chinese</h3>
-              <p className="text-lg text-stone-800 font-medium">{word.chineseMeaning}</p>
-            </div>
-            
-            <div>
-              <h3 className="text-xs font-bold tracking-wider text-stone-400 uppercase mb-2">English</h3>
-              <p className="text-stone-700 leading-relaxed">{word.englishMeaning}</p>
+          <div className="w-full h-full p-5 lg:p-6 lg:p-8 flex flex-col">
+            <div className="flex justify-between items-start mb-3 lg:mb-4 pb-3 lg:pb-4 border-b border-stone-100">
+              <div className="pr-2">
+                <h2 className="text-xl lg:text-2xl lg:text-3xl font-bold text-stone-900 mb-0.5 lg:mb-1 break-words">{word.word}</h2>
+                <p className="text-sm lg:text-base lg:text-lg font-mono text-stone-500">{word.pronunciation}</p>
+              </div>
+              <button
+                onClick={(e) => playAudio(e, word.word)}
+                className="p-2 lg:p-2.5 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors shrink-0"
+              >
+                <Volume2 className="w-5 h-5 lg:w-5 lg:h-5 lg:w-6 lg:h-6" />
+              </button>
             </div>
 
-            <div>
-              <h3 className="text-xs font-bold tracking-wider text-stone-400 uppercase mb-2">Collocations</h3>
-              <ul className="space-y-1">
-                {(word.collocations || []).slice(0, 3).map((col: string, idx: number) => (
-                  <li key={idx} className="text-stone-600 text-sm bg-stone-50 px-2 py-1 rounded inline-block mr-2 mb-2">
-                    {col}
-                  </li>
-                ))}
-              </ul>
+            <div className="space-y-3 lg:space-y-4 lg:space-y-6 flex-1 overflow-y-auto scrollbar-hide pb-2">
+              <div>
+                <h3 className="text-[9px] lg:text-[10px] font-black tracking-widest text-stone-400 uppercase mb-0.5 lg:mb-1">Chinese</h3>
+                <p className="text-base lg:text-lg lg:text-xl text-stone-800 font-medium">{word.chineseMeaning}</p>
+              </div>
+              
+              <div>
+                <h3 className="text-[9px] lg:text-[10px] font-black tracking-widest text-stone-400 uppercase mb-0.5 lg:mb-1">Collocations</h3>
+                <div className="flex flex-wrap gap-1.5 lg:gap-2">
+                  {(word.collocations || []).slice(0, 3).map((col: string, idx: number) => (
+                    <span key={idx} className="text-stone-600 text-[10px] lg:text-xs lg:text-sm bg-stone-50 px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-lg border border-stone-100">
+                      {col}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-3 lg:pt-4 border-t border-stone-100">
+                <div className="flex items-center gap-2 mb-1 lg:mb-2">
+                  <Brain className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-indigo-500" />
+                  <h3 className="text-[9px] lg:text-[10px] font-black tracking-widest text-stone-400 uppercase">Mnemonics</h3>
+                </div>
+                <p className="text-xs lg:text-sm lg:text-base text-stone-600 leading-relaxed">
+                  {word.memoryAid || 'No mnemonic available. Try creating your own association!'}
+                </p>
+              </div>
             </div>
           </div>
         </div>

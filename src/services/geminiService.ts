@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -20,14 +20,16 @@ export interface WordData {
   englishMeaning: string;
   collocations: string[];
   sentences: { english: string; chinese: string }[];
+  memoryAid: string;
 }
 
 export async function lookupWord(word: string): Promise<WordData> {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Provide detailed information for the GRE vocabulary word: "${word}". Ensure the usage is accurate and reflects native speaker habits. To ensure a fast response, strictly limit the output to exactly 3 collocations and 2 example sentences.`,
+    contents: `Provide detailed information for the GRE vocabulary word: "${word}". Ensure the usage is accurate and reflects native speaker habits. To ensure a fast response, strictly limit the output to exactly 3 collocations and 2 example sentences. Also provide a "memoryAid" which includes mnemonics, etymology, or vivid associations (in Chinese) to help students remember the word effectively.`,
     config: {
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -52,14 +54,93 @@ export async function lookupWord(word: string): Promise<WordData> {
               required: ["english", "chinese"]
             },
             description: "Example sentences demonstrating accurate usage"
-          }
+          },
+          memoryAid: { type: Type.STRING, description: "Mnemonics, etymology, or associations to help memory" }
         },
-        required: ["word", "pronunciation", "chineseMeaning", "englishMeaning", "collocations", "sentences"]
+        required: ["word", "pronunciation", "chineseMeaning", "englishMeaning", "collocations", "sentences", "memoryAid"]
       }
     }
   });
 
   return JSON.parse(response.text || "{}") as WordData;
+}
+
+export interface SentenceAnalysisData {
+  original: string;
+  translation: string;
+  structure: {
+    part: string;
+    content: string;
+    explanation: string;
+  }[];
+  vocabulary: {
+    word: string;
+    meaning: string;
+    usage: string;
+  }[];
+  grammarPoints: string[];
+}
+
+export async function analyzeSentences(text: string): Promise<SentenceAnalysisData[]> {
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-pro-preview",
+    contents: `Analyze the following English text (likely from GRE/GMAT/LSAT context): "${text}". 
+    First, split the text into individual sentences.
+    Then, for each sentence, provide:
+    1. The original sentence.
+    2. A natural Chinese translation.
+    3. A structural breakdown (Subject, Verb, Object, Modifiers, Clauses) with explanations in Chinese.
+    4. A list of advanced vocabulary or expressions found in the sentence with their meanings and usage notes (in Chinese).
+    5. Key grammar points or rhetorical devices used (in Chinese).
+    
+    Ensure the analysis is deep and helpful for advanced English learners. All explanations, meanings, and notes must be in Chinese.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            original: { type: Type.STRING },
+            translation: { type: Type.STRING },
+            structure: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  part: { type: Type.STRING, description: "e.g., Subject, Main Verb, Relative Clause" },
+                  content: { type: Type.STRING, description: "The specific text from the sentence" },
+                  explanation: { type: Type.STRING, description: "Explanation of its role in Chinese" }
+                },
+                required: ["part", "content", "explanation"]
+              }
+            },
+            vocabulary: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  word: { type: Type.STRING },
+                  meaning: { type: Type.STRING, description: "Meaning in Chinese" },
+                  usage: { type: Type.STRING, description: "Usage note in Chinese" }
+                },
+                required: ["word", "meaning", "usage"]
+              }
+            },
+            grammarPoints: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Key grammar points or rhetorical devices used, explained in Chinese"
+            }
+          },
+          required: ["original", "translation", "structure", "vocabulary", "grammarPoints"]
+        }
+      }
+    }
+  });
+
+  return JSON.parse(response.text || "[]") as SentenceAnalysisData[];
 }
 
 export interface EssayFeedback {
